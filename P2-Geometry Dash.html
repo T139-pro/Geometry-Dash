@@ -1,0 +1,330 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Mini Geometry Dash</title>
+  <style>
+    body {
+      background-color: #222;
+      margin: 0;
+      font-family: Arial, sans-serif;
+      color: #fff;
+    }
+
+    .centered {
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      height: 100vh;
+      flex-direction: column;
+      text-align: center;
+    }
+
+    .menu-btn {
+      margin: 10px;
+      padding: 12px 24px;
+      font-size: 1.2em;
+      background-color: #3377ff;
+      border: none;
+      border-radius: 5px;
+      cursor: pointer;
+      transition: background-color 0.3s;
+      color: white;
+    }
+
+    .menu-btn:hover {
+      background-color: #2255cc;
+    }
+
+    .game-container {
+      display: none;
+      flex-direction: column;
+      align-items: center;
+    }
+
+    canvas {
+      background-color: #000;
+      cursor: pointer;
+    }
+
+    .score-board {
+      display: flex;
+      justify-content: space-around;
+      width: 100%;
+      padding: 10px 0;
+      background-color: #111;
+    }
+
+    #game-over, #leaderboard, #controls-info {
+      position: absolute;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      background: rgba(0,0,0,0.85);
+      padding: 30px;
+      border-radius: 10px;
+      text-align: center;
+      z-index: 10;
+    }
+
+    .hidden {
+      display: none;
+    }
+
+    ul {
+      list-style: none;
+      padding: 0;
+    }
+  </style>
+</head>
+<body>
+
+<!-- MAIN MENU -->
+<div id="main-menu" class="centered">
+  <h1>Geometry Dash Simple</h1>
+  <button class="menu-btn" onclick="startGame()">New Game</button>
+  <button class="menu-btn" onclick="showLeaderboard()">Top 10 Leaderboard</button>
+  <button class="menu-btn" onclick="showControls()">Controls</button>
+  <button class="menu-btn" onclick="quitGame()">Quit Game</button>
+</div>
+
+<!-- GAME UI -->
+<div class="game-container" id="game-area">
+  <canvas id="gameCanvas"></canvas>
+  <div class="score-board">
+    <h2>Score: <span id="score">0</span></h2>
+    <h2>Attempts: <span id="attempts">0</span></h2>
+  </div>
+  <div id="game-over" class="hidden">
+    <h1>Game Over</h1>
+    <button onclick="restartGame()" class="menu-btn">Restart</button>
+  </div>
+</div>
+
+<!-- LEADERBOARD -->
+<div id="leaderboard" class="hidden">
+  <h2>Top 10 Leaderboard</h2>
+  <ul id="leaderList"></ul>
+  <button onclick="closePopup('leaderboard')" class="menu-btn">Close</button>
+</div>
+
+<!-- CONTROLS INFO -->
+<div id="controls-info" class="hidden">
+  <h2>Controls</h2>
+  <p>Spacebar or Tap to Jump</p>
+  <p>Don't touch red blocks!</p>
+  <button onclick="closePopup('controls-info')" class="menu-btn">Close</button>
+</div>
+
+<script>
+  const canvas = document.getElementById('gameCanvas');
+  const ctx = canvas.getContext('2d');
+  canvas.width = 800;
+  canvas.height = 400;
+
+  const gameArea = document.getElementById('game-area');
+  const scoreEl = document.getElementById('score');
+  const attemptsEl = document.getElementById('attempts');
+  const gameOverEl = document.getElementById('game-over');
+  const leaderboardEl = document.getElementById('leaderboard');
+  const controlsInfoEl = document.getElementById('controls-info');
+  const leaderList = document.getElementById('leaderList');
+
+  let score = 0;
+  let attempts = 0;
+  let isGameOver = false;
+  let gameSpeed = 5;
+  let obstacleTimer = 0;
+  const obstacleInterval = 100;
+  let obstacles = [];
+  let playerName = "Player";
+
+  const player = {
+    x: 50,
+    y: 280,
+    width: 40,
+    height: 40,
+    color: '#00ccff',
+    velocityY: 0,
+    gravity: 0.8,
+    isJumping: false,
+    jumpStrength: -15
+  };
+
+  class Obstacle {
+    constructor(x, y, width, height) {
+      this.x = x;
+      this.y = y;
+      this.width = width;
+      this.height = height;
+      this.color = '#ff3333';
+    }
+
+    draw() {
+      ctx.fillStyle = this.color;
+      ctx.fillRect(this.x, this.y, this.width, this.height);
+    }
+
+    update() {
+      this.x -= gameSpeed;
+    }
+  }
+
+  function drawPlayer() {
+    ctx.save();
+    ctx.translate(player.x + player.width / 2, player.y + player.height / 2);
+    ctx.rotate(score / 100);
+    ctx.fillStyle = player.color;
+    ctx.fillRect(-player.width / 2, -player.height / 2, player.width, player.height);
+    ctx.restore();
+  }
+
+  function drawObstacles() {
+    obstacles.forEach(ob => ob.draw());
+  }
+
+  function jump() {
+    if (!player.isJumping) {
+      player.isJumping = true;
+      player.velocityY = player.jumpStrength;
+    }
+  }
+
+  function update() {
+    if (isGameOver) return;
+
+    player.velocityY += player.gravity;
+    player.y += player.velocityY;
+
+    if (player.y + player.height > canvas.height - 80) {
+      player.y = canvas.height - 80 - player.height;
+      player.velocityY = 0;
+      player.isJumping = false;
+    }
+
+    obstacles.forEach(ob => ob.update());
+    obstacles = obstacles.filter(ob => ob.x + ob.width > 0);
+
+    obstacleTimer++;
+    if (obstacleTimer % obstacleInterval === 0) {
+      const h = Math.random() * 60 + 30;
+      obstacles.push(new Obstacle(canvas.width, canvas.height - 80 - h, 40, h));
+    }
+
+    score++;
+    gameSpeed += 0.001;
+  }
+
+  function checkCollision() {
+    for (let ob of obstacles) {
+      if (
+        player.x < ob.x + ob.width &&
+        player.x + player.width > ob.x &&
+        player.y < ob.y + ob.height &&
+        player.y + player.height > ob.y
+      ) {
+        endGame();
+      }
+    }
+  }
+
+  function updateUI() {
+    scoreEl.textContent = Math.floor(score / 10);
+    attemptsEl.textContent = attempts;
+  }
+
+  function gameLoop() {
+    if (isGameOver) return;
+
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    ctx.fillStyle = '#333';
+    ctx.fillRect(0, canvas.height - 80, canvas.width, 80);
+
+    update();
+    drawPlayer();
+    drawObstacles();
+    checkCollision();
+    updateUI();
+
+    requestAnimationFrame(gameLoop);
+  }
+
+  function endGame() {
+    isGameOver = true;
+    attempts++;
+    gameOverEl.classList.remove('hidden');
+
+    const finalScore = Math.floor(score / 10);
+    const newEntry = { name: playerName, score: finalScore };
+
+    let leaderboard = JSON.parse(localStorage.getItem("geometryLeaderboard")) || [];
+    leaderboard.push(newEntry);
+    leaderboard.sort((a, b) => b.score - a.score);
+    leaderboard = leaderboard.slice(0, 10);
+    localStorage.setItem("geometryLeaderboard", JSON.stringify(leaderboard));
+  }
+
+  function restartGame() {
+    isGameOver = false;
+    gameOverEl.classList.add('hidden');
+    score = 0;
+    gameSpeed = 5;
+    player.y = 280;
+    player.velocityY = 0;
+    player.isJumping = false;
+    obstacles = [];
+    obstacleTimer = 0;
+    gameLoop();
+  }
+
+  function startGame() {
+    playerName = prompt("Enter your name:") || "Player";
+    document.getElementById('main-menu').style.display = 'none';
+    gameArea.style.display = 'flex';
+    restartGame();
+  }
+
+  function showLeaderboard() {
+    leaderboardEl.classList.remove('hidden');
+    leaderList.innerHTML = '';
+    const leaderboard = JSON.parse(localStorage.getItem("geometryLeaderboard")) || [];
+    if (leaderboard.length === 0) {
+      leaderList.innerHTML = '<li>No scores yet</li>';
+    } else {
+      leaderboard.forEach((entry, i) => {
+        leaderList.innerHTML += `<li>#${i + 1} - ${entry.name}: ${entry.score} pts</li>`;
+      });
+    }
+  }
+
+  function showControls() {
+    controlsInfoEl.classList.remove('hidden');
+  }
+
+  function closePopup(id) {
+    document.getElementById(id).classList.add('hidden');
+  }
+
+  function quitGame() {
+    if (confirm("Are you sure you want to quit the game?")) {
+      window.open('', '_self');
+      window.close();
+      window.location.href = "about:blank"; // fallback for mobile
+    }
+  }
+
+  // Input Events
+  document.addEventListener('keydown', e => {
+    if (e.code === 'Space' && !isGameOver) jump();
+  });
+  canvas.addEventListener('click', () => {
+    if (!isGameOver) jump();
+  });
+  canvas.addEventListener('touchstart', () => {
+    if (!isGameOver) jump();
+  });
+</script>
+</body>
+</html>
+<!--This makes our geometry dash game.-->
